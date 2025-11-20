@@ -19,19 +19,18 @@ load_dotenv()
 
 # --- INITIALIZATION ---
 app = Flask(__name__)
-# We must allow async_mode for gevent
-# socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
-socketio = SocketIO(app, cors_allowed_origins=[
-    "http://localhost:5173",
-    "https://focus-sphere-six.vercel.app/"
-], async_mode='gevent')
- # New init
-# CORS(app) # CORS is already handled by SocketIO, but this is fine
-CORS(app, resources={r"/api/*": {"origins": [
-    "http://localhost:5173",
-    "https://focus-sphere-six.vercel.app/"
-]}})
 
+# CORS Configuration - Allow specific origins (NO trailing slashes!)
+cors_allowed_origins = [
+    "http://localhost:5173",  # Local development
+    "https://focus-sphere-six.vercel.app"  # Production - NO trailing slash!
+]
+
+# Configure CORS for Flask routes
+CORS(app, resources={r"/api/*": {"origins": cors_allowed_origins}})
+
+# Configure Socket.IO with same origins
+socketio = SocketIO(app, cors_allowed_origins=cors_allowed_origins, async_mode='gevent')
 
 # --- CONFIGURATION ---
 basedir = os.path.abspath(os.path.dirname(__file__))
