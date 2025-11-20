@@ -1163,22 +1163,46 @@ def invite_user(current_user):
     invitee_sid = active_users.get(str(invitee_user_id)) or active_users.get(invitee_user_id)
     
     if not invitee_sid:
-        # Retry with a small delay - sometimes registration is still in progress
+        # Retry with increasing delays - sometimes registration is still in progress
         import time
-        for attempt in range(3):  # Try 3 times with 200ms delay
-            time.sleep(0.2)
+        retry_delays = [0.2, 0.5, 1.0]  # Try 3 times with increasing delays
+        for attempt, delay in enumerate(retry_delays):
+            time.sleep(delay)
             invitee_sid = active_users.get(str(invitee_user_id)) or active_users.get(invitee_user_id)
             if invitee_sid:
-                print(f"✓ Found invitee after {attempt + 1} attempt(s)")
+                print(f"✓ Found invitee after {attempt + 1} attempt(s) with {delay}s delay")
                 break
+        
+        # If still not found, try to find by checking all active sockets
+        if not invitee_sid:
+            print(f"⚠ User {invitee_user_id} not in active_users, checking all sockets...")
+            # Try to find the user's socket by checking if they're in their user room
+            from flask_socketio import rooms as get_rooms
+            user_room = f"user_{invitee_user_id}"
+            
+            # Check all active sockets to see if any are in the user's room
+            for sid in set(active_users.values()):
+                try:
+                    rooms = get_rooms(sid)
+                    if user_room in rooms:
+                        # Found the socket! Update active_users mapping
+                        invitee_sid = sid
+                        active_users[str(invitee_user_id)] = sid
+                        print(f"✓ Found invitee socket {sid} via room check and updated active_users")
+                        break
+                except:
+                    continue
         
         if not invitee_sid:
             # Debug information
-            print(f"✗ User {invitee_user_id} not found in active_users")
+            print(f"✗ User {invitee_user_id} not found in active_users after all retries")
             print(f"Active users: {active_users}")
             print(f"Looking for user_id: {invitee_user_id} (as string: '{str(invitee_user_id)}')")
+            print(f"Invitee status: {invitee_user.status}")
+            
+            # Return a more helpful error message
             return jsonify({
-                "error": "User is not online or available. Please make sure they are logged in and have set their status to 'searching'.",
+                "error": "User is not online or their connection is not registered. They may need to refresh their page or set their status to 'searching' again.",
                 "debug": {
                     "invitee_user_id": invitee_user_id,
                     "invitee_status": invitee_user.status,

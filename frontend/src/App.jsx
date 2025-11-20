@@ -1029,9 +1029,24 @@ function App() {
         minimum_similarity_threshold: similarityThreshold
       });
       
+      // Ensure socket is connected first
+      if (!socket.connected) {
+        setMessage('Connecting to server...');
+        socket.connect();
+        // Wait for connection
+        await new Promise((resolve) => {
+          if (socket.connected) {
+            resolve();
+          } else {
+            socket.once('connect', resolve);
+            setTimeout(resolve, 3000); // Timeout after 3 seconds
+          }
+        });
+      }
+      
       // Ensure socket is registered when setting status to searching
       setMessage('Registering connection...');
-      const registered = await registerSocketWithRetry();
+      const registered = await registerSocketWithRetry(10, 500); // More retries, longer delay
       
       // Re-register invite_received listener to ensure it's active
       if (socket.connected) {
@@ -1041,9 +1056,11 @@ function App() {
       }
       
       if (registered) {
-        setMessage('Status set to "searching" and connection registered!');
+        setMessage('Status set to "searching" and connection registered! ✓');
+        console.log('✓ Socket registration confirmed');
       } else {
-        setMessage('Status set to "searching"! (Connection may still be registering...)');
+        setMessage('⚠ Status set to "searching", but connection registration may still be pending. If invites don\'t work, try refreshing the page.');
+        console.warn('⚠ Socket registration may have failed');
       }
     } catch (error) {
       setMessage(`Error: ${error.response?.data?.error || 'Could not set status'}`);
@@ -1051,15 +1068,56 @@ function App() {
   };
 
   const handleFindMatch = async () => {
-    // ... (no change from before)
     setMessage('Finding matches...');
     setMatchResults(null);
+    
+    // Ensure socket is registered before finding matches
+    if (!isSocketRegistered && socket.connected) {
+      console.log('Registering socket before finding matches...');
+      setMessage('Registering connection...');
+      const registered = await registerSocketWithRetry(5, 300);
+      if (!registered) {
+        setMessage('Error: Could not register connection. Please refresh the page.');
+        return;
+      }
+    }
+    
+    // If socket is not connected, try to connect
+    if (!socket.connected) {
+      setMessage('Connecting to server...');
+      socket.connect();
+      // Wait a bit for connection
+      await new Promise(resolve => {
+        if (socket.connected) {
+          resolve();
+        } else {
+          socket.once('connect', resolve);
+          setTimeout(resolve, 2000);
+        }
+      });
+      
+      // Try to register after connection
+      if (socket.connected) {
+        const registered = await registerSocketWithRetry(5, 300);
+        if (!registered) {
+          setMessage('Error: Could not register connection. Please refresh the page.');
+          return;
+        }
+      } else {
+        setMessage('Error: Could not connect to server. Please refresh the page.');
+        return;
+      }
+    }
+    
     try {
+      setMessage('Finding matches...');
       const response = await apiClient.post('/api/match/find');
       setMatchResults(response.data);
       setMessage('Matches found!');
     } catch (error) {
-      setMessage(`Error: ${error.response?.data?.message || 'Could not find matches'}`);
+      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Could not find matches';
+      setMessage(`Error: ${errorMsg}`);
+      console.error('Find match error:', error.response?.data);
     }
   };
 
