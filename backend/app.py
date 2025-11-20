@@ -1102,7 +1102,17 @@ def find_match(current_user):
     candidates = [c for c in candidates if c.id in online_candidate_ids]
     
     if not candidates:
-        return jsonify({"message": "No other users are currently online and searching."}), 404
+        # Provide more helpful error message
+        searching_count = len(User.query.filter(User.status == 'searching', User.id != current_user.id).all())
+        online_count = len(online_candidate_ids)
+        
+        if searching_count > 0:
+            return jsonify({
+                "message": f"Found {searching_count} user(s) with status 'searching', but they are not currently online. They may need to refresh their page or reconnect.",
+                "hint": "Ask the other user to refresh their browser page or set their status to 'searching' again to reconnect."
+            }), 404
+        else:
+            return jsonify({"message": "No other users are currently online and searching."}), 404
     
     if current_user.goal_embedding is None:
         return jsonify({"error": "You must set a study goal first."}), 400

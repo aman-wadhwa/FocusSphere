@@ -1116,7 +1116,13 @@ function App() {
       setMessage('Matches found!');
     } catch (error) {
       const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Could not find matches';
-      setMessage(`Error: ${errorMsg}`);
+      const hint = error.response?.data?.hint;
+      
+      if (hint) {
+        setMessage(`Error: ${errorMsg}\n\n💡 ${hint}`);
+      } else {
+        setMessage(`Error: ${errorMsg}`);
+      }
       console.error('Find match error:', error.response?.data);
     }
   };
