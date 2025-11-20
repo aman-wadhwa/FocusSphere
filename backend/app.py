@@ -1040,7 +1040,47 @@ def update_status(current_user):
             print(f"⚠ User {current_user.id} not found in active_users when setting status to searching")
             print(f"⚠ Active users: {active_users}")
     
-    return jsonify({"message": "Status updated", "user": current_user.to_dict()})
+    # Check if user is registered in active_users
+    user_id_str = str(current_user.id)
+    is_online = user_id_str in active_users
+    socket_id = active_users.get(user_id_str) if is_online else None
+    
+    return jsonify({
+        "message": "Status updated", 
+        "user": current_user.to_dict(),
+        "connection_status": {
+            "is_online": is_online,
+            "socket_id": socket_id,
+            "needs_reconnection": new_status == 'searching' and not is_online
+        }
+    })
+
+@app.route('/api/users/me/connection-status', methods=['GET'])
+@token_required
+def check_connection_status(current_user):
+    """Check if user's socket connection is registered"""
+    user_id_str = str(current_user.id)
+    is_online = user_id_str in active_users
+    socket_id = active_users.get(user_id_str) if is_online else None
+    
+    # Check if socket is still valid
+    socket_valid = False
+    if socket_id:
+        try:
+            from flask_socketio import rooms as get_rooms
+            rooms = get_rooms(socket_id)
+            socket_valid = len(rooms) > 0
+        except:
+            socket_valid = False
+    
+    return jsonify({
+        "is_online": is_online,
+        "socket_id": socket_id,
+        "socket_valid": socket_valid,
+        "user_id": current_user.id,
+        "status": current_user.status,
+        "message": "Socket connection is registered and active" if (is_online and socket_valid) else "Socket connection is not registered or invalid. Please refresh the page or reconnect."
+    })
 
 @app.route('/api/users/me/preferences', methods=['PUT'])
 @token_required
@@ -2241,11 +2281,31 @@ def handle_register_connection(data):
         # Decode token to get user_id
         token_data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
         user_id = token_data['sub']
+        user_id_str = str(user_id)
+        
+        # Clean up any old socket connections for this user (if they reconnected)
+        old_sid = active_users.get(user_id_str)
+        if old_sid and old_sid != request.sid:
+            print(f"⚠ Cleaning up old socket connection for user {user_id}: {old_sid} -> {request.sid}")
+            # Remove old socket from active_users
+            try:
+                # Check if old socket is still valid
+                from flask_socketio import rooms as get_rooms
+                try:
+                    old_rooms = get_rooms(old_sid)
+                    if not old_rooms:  # Socket is disconnected
+                        print(f"✓ Old socket {old_sid} is disconnected, removing from active_users")
+                    else:
+                        print(f"⚠ Old socket {old_sid} still has rooms: {old_rooms}")
+                except:
+                    print(f"✓ Old socket {old_sid} is invalid, removing from active_users")
+            except:
+                pass
         
         # Map the user_id to their current socket ID
-        active_users[str(user_id)] = request.sid
+        active_users[user_id_str] = request.sid
         print(f"✓ Registered user {user_id} to sid {request.sid}")
-        print(f"Active users: {active_users}")
+        print(f"Active users count: {len(active_users)}")
         
         # Also join a user-specific room for fallback message delivery
         room_id = f"user_{user_id}"
@@ -2259,6 +2319,16 @@ def handle_register_connection(data):
             print(f"✓ User {user_id} is now in rooms: {user_rooms}")
             if room_id not in user_rooms:
                 print(f"⚠ WARNING: User {user_id} not in their user room {room_id} after join attempt!")
+                # Retry joining
+                try:
+                    join_room(room_id, sid=request.sid)
+                    user_rooms = get_rooms(request.sid)
+                    if room_id in user_rooms:
+                        print(f"✓ User {user_id} successfully joined room {room_id} on retry")
+                    else:
+                        print(f"✗ User {user_id} still not in room {room_id} after retry")
+                except Exception as retry_e:
+                    print(f"✗ Error retrying join for user {user_id}: {retry_e}")
         except Exception as e:
             print(f"✗ Error joining user {user_id} to room {room_id}: {e}")
             import traceback
@@ -2267,12 +2337,25 @@ def handle_register_connection(data):
         # Send confirmation back to client
         socketio.emit('registration_confirmed', {
             'user_id': user_id,
-            'status': 'registered'
+            'status': 'registered',
+            'socket_id': request.sid
         }, room=request.sid)
+        print(f"✓ Registration confirmation sent to user {user_id}")
         
+    except jwt.ExpiredSignatureError:
+        error_msg = "Token has expired. Please log in again."
+        print(f"✗ Token expired for socket {request.sid}")
+        socketio.emit('registration_failed', {'error': error_msg}, room=request.sid)
+    except jwt.InvalidTokenError as e:
+        error_msg = f"Invalid token: {str(e)}"
+        print(f"✗ Invalid token for socket {request.sid}: {e}")
+        socketio.emit('registration_failed', {'error': error_msg}, room=request.sid)
     except Exception as e:
+        error_msg = f"Connection registration failed: {str(e)}"
         print(f"✗ Token invalid, connection not registered: {e}")
-        socketio.emit('registration_failed', {'error': str(e)}, room=request.sid)
+        import traceback
+        traceback.print_exc()
+        socketio.emit('registration_failed', {'error': error_msg}, room=request.sid)
 
 @socketio.on('decline_invitation')
 def handle_decline_invitation(data):

@@ -1058,9 +1058,33 @@ function App() {
       if (registered) {
         setMessage('Status set to "searching" and connection registered! ✓');
         console.log('✓ Socket registration confirmed');
+        
+        // Verify connection status with backend
+        try {
+          const statusResponse = await apiClient.get('/api/users/me/connection-status');
+          if (statusResponse.data.is_online && statusResponse.data.socket_valid) {
+            console.log('✓ Connection status verified:', statusResponse.data);
+          } else {
+            console.warn('⚠ Connection status check failed:', statusResponse.data);
+            setMessage('⚠ Status set to "searching", but connection may not be fully active. Please refresh the page if invites don\'t work.');
+          }
+        } catch (statusError) {
+          console.warn('⚠ Could not verify connection status:', statusError);
+        }
       } else {
-        setMessage('⚠ Status set to "searching", but connection registration may still be pending. If invites don\'t work, try refreshing the page.');
-        console.warn('⚠ Socket registration may have failed');
+        setMessage('⚠ Status set to "searching", but connection registration failed. Please refresh the page and try again.');
+        console.warn('⚠ Socket registration failed');
+        
+        // Check connection status to provide more info
+        try {
+          const statusResponse = await apiClient.get('/api/users/me/connection-status');
+          console.log('Connection status:', statusResponse.data);
+          if (!statusResponse.data.is_online) {
+            setMessage('❌ Connection not registered. Please refresh the page to reconnect.');
+          }
+        } catch (statusError) {
+          console.error('Could not check connection status:', statusError);
+        }
       }
     } catch (error) {
       setMessage(`Error: ${error.response?.data?.error || 'Could not set status'}`);
