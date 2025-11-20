@@ -20,17 +20,17 @@ load_dotenv()
 # --- INITIALIZATION ---
 app = Flask(__name__)
 # We must allow async_mode for gevent
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
-# socketio = SocketIO(app, cors_allowed_origins=[
-#     "http://localhost:5173",
-#     "https://your-frontend-domain.vercel.app"
-# ], async_mode='gevent')
+# socketio = SocketIO(app, cors_allowed_origins="*", async_mode='gevent')
+socketio = SocketIO(app, cors_allowed_origins=[
+    "http://localhost:5173",
+    "https://focus-sphere-six.vercel.app/"
+], async_mode='gevent')
  # New init
-CORS(app) # CORS is already handled by SocketIO, but this is fine
-# CORS(app, resources={r"/api/*": {"origins": [
-#     "http://localhost:5173",
-#     "https://your-frontend-domain.vercel.app"
-# ]}})
+# CORS(app) # CORS is already handled by SocketIO, but this is fine
+CORS(app, resources={r"/api/*": {"origins": [
+    "http://localhost:5173",
+    "https://focus-sphere-six.vercel.app/"
+]}})
 
 
 # --- CONFIGURATION ---
