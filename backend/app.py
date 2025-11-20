@@ -26,11 +26,19 @@ cors_allowed_origins = [
     "https://focus-sphere-six.vercel.app"  # Production - NO trailing slash!
 ]
 
-# Configure CORS for Flask routes
-CORS(app, resources={r"/api/*": {"origins": cors_allowed_origins}})
+# Configure CORS for Flask routes AND Socket.IO routes
+CORS(app, resources={
+    r"/api/*": {"origins": cors_allowed_origins},
+    r"/socket.io/*": {"origins": cors_allowed_origins}  # Add this for Socket.IO
+})
 
 # Configure Socket.IO with same origins
-socketio = SocketIO(app, cors_allowed_origins=cors_allowed_origins, async_mode='gevent')
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins=cors_allowed_origins,
+    async_mode='gevent',
+    cors_credentials=True  # Allow credentials if needed
+)
 
 # --- CONFIGURATION ---
 basedir = os.path.abspath(os.path.dirname(__file__))
