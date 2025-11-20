@@ -1121,8 +1121,35 @@ def find_match(current_user):
     """Enhanced matchmaking with multi-factor scoring"""
     # Check if current user is actually online
     current_user_id_str = str(current_user.id)
-    if current_user_id_str not in active_users:
-        return jsonify({"error": "You must be connected to search for matches. Please refresh the page."}), 400
+    user_sid = active_users.get(current_user_id_str)
+    
+    # If not in active_users, try to find them via their user room (fallback)
+    if not user_sid:
+        print(f"⚠ User {current_user.id} not in active_users, checking user room as fallback...")
+        user_room = f"user_{current_user.id}"
+        from flask_socketio import rooms as get_rooms
+        
+        # Check all active sockets to see if any are in the user's room
+        for sid in set(active_users.values()):
+            try:
+                rooms = get_rooms(sid)
+                if user_room in rooms:
+                    # Found the socket! Update active_users mapping
+                    user_sid = sid
+                    active_users[current_user_id_str] = sid
+                    print(f"✓ Found user {current_user.id} socket {sid} via room check and updated active_users")
+                    break
+            except:
+                continue
+        
+        # If still not found, return error but with helpful message
+        if not user_sid:
+            print(f"✗ User {current_user.id} not found in active_users or user room")
+            print(f"Active users: {active_users}")
+            return jsonify({
+                "error": "You must be connected to search for matches. Please refresh the page or wait a moment for your connection to register.",
+                "hint": "Your socket connection may still be registering. Try waiting a few seconds and clicking 'Find a Match' again, or refresh the page."
+            }), 400
     
     # Get all searching candidates
     candidates = User.query.filter(User.status == 'searching', User.id != current_user.id).all()

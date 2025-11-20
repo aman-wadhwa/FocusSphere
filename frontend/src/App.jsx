@@ -1095,59 +1095,89 @@ function App() {
     setMessage('Finding matches...');
     setMatchResults(null);
     
-    // Ensure socket is registered before finding matches
-    if (!isSocketRegistered && socket.connected) {
-      console.log('Registering socket before finding matches...');
-      setMessage('Registering connection...');
-      const registered = await registerSocketWithRetry(5, 300);
-      if (!registered) {
-        setMessage('Error: Could not register connection. Please refresh the page.');
-        return;
-      }
-    }
-    
-    // If socket is not connected, try to connect
+    // Ensure socket is connected first
     if (!socket.connected) {
       setMessage('Connecting to server...');
       socket.connect();
-      // Wait a bit for connection
+      // Wait for connection with timeout
       await new Promise(resolve => {
         if (socket.connected) {
           resolve();
         } else {
-          socket.once('connect', resolve);
-          setTimeout(resolve, 2000);
+          socket.once('connect', () => resolve());
+          setTimeout(() => resolve(), 3000);
         }
       });
+    }
+    
+    // Ensure socket is registered - try multiple times with increasing delays
+    if (!isSocketRegistered && socket.connected) {
+      console.log('Registering socket before finding matches...');
+      setMessage('Registering connection...');
       
-      // Try to register after connection
-      if (socket.connected) {
-        const registered = await registerSocketWithRetry(5, 300);
-        if (!registered) {
-          setMessage('Error: Could not register connection. Please refresh the page.');
-          return;
-        }
+      // Try registration with more retries and longer delays
+      const registered = await registerSocketWithRetry(10, 500);
+      if (!registered) {
+        // Even if registration seems to fail, try the API call anyway
+        // The backend will check and may find the user via room membership
+        console.warn('⚠ Socket registration may have failed, but trying API call anyway...');
+        setMessage('Connection may still be registering. Attempting to find matches...');
+        // Wait a bit more for registration to complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } else {
-        setMessage('Error: Could not connect to server. Please refresh the page.');
-        return;
+        console.log('✓ Socket registered successfully');
       }
     }
     
-    try {
-      setMessage('Finding matches...');
-      const response = await apiClient.post('/api/match/find');
-      setMatchResults(response.data);
-      setMessage('Matches found!');
-    } catch (error) {
-      const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Could not find matches';
-      const hint = error.response?.data?.hint;
-      
+    // Try the API call with retry logic
+    let lastError = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        if (attempt > 0) {
+          setMessage(`Finding matches... (attempt ${attempt + 1}/3)`);
+          // Wait a bit before retry
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          // Try to register again before retry
+          if (socket.connected) {
+            await registerSocketWithRetry(3, 300);
+          }
+        }
+        
+        const response = await apiClient.post('/api/match/find');
+        setMatchResults(response.data);
+        setMessage('Matches found!');
+        return; // Success, exit
+      } catch (error) {
+        lastError = error;
+        const errorMsg = error.response?.data?.error || error.response?.data?.message || 'Could not find matches';
+        const hint = error.response?.data?.hint;
+        
+        // If it's a connection error and we have retries left, continue
+        if ((errorMsg.includes('connected') || errorMsg.includes('connection')) && attempt < 2) {
+          console.log(`⚠ Connection error on attempt ${attempt + 1}, retrying...`);
+          continue;
+        }
+        
+        // Otherwise, show error
+        if (hint) {
+          setMessage(`Error: ${errorMsg}\n\n💡 ${hint}`);
+        } else {
+          setMessage(`Error: ${errorMsg}`);
+        }
+        console.error('Find match error:', error.response?.data);
+        return; // Exit on non-retryable error
+      }
+    }
+    
+    // If we get here, all retries failed
+    if (lastError) {
+      const errorMsg = lastError.response?.data?.error || lastError.response?.data?.message || 'Could not find matches';
+      const hint = lastError.response?.data?.hint;
       if (hint) {
         setMessage(`Error: ${errorMsg}\n\n💡 ${hint}`);
       } else {
-        setMessage(`Error: ${errorMsg}`);
+        setMessage(`Error: ${errorMsg}. Please refresh the page and try again.`);
       }
-      console.error('Find match error:', error.response?.data);
     }
   };
 
