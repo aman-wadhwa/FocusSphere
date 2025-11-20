@@ -20,24 +20,14 @@ load_dotenv()
 # --- INITIALIZATION ---
 app = Flask(__name__)
 
-# CORS Configuration - Allow specific origins (NO trailing slashes!)
-cors_allowed_origins = [
-    "http://localhost:5173",  # Local development
-    "https://focus-sphere-six.vercel.app"  # Production - NO trailing slash!
-]
+# TEMPORARY: Allow all origins for debugging (change back after testing)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# Configure CORS for Flask routes AND Socket.IO routes
-CORS(app, resources={
-    r"/api/*": {"origins": cors_allowed_origins},
-    r"/socket.io/*": {"origins": cors_allowed_origins}  # Add this for Socket.IO
-})
-
-# Configure Socket.IO with same origins
+# Configure Socket.IO - allow all origins temporarily
 socketio = SocketIO(
     app, 
-    cors_allowed_origins=cors_allowed_origins,
-    async_mode='gevent',
-    cors_credentials=True  # Allow credentials if needed
+    cors_allowed_origins="*",  # Temporary - allow all
+    async_mode='gevent'
 )
 
 # --- CONFIGURATION ---
