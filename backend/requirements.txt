@@ -13,7 +13,7 @@ blinker==1.9.0
 
 # Database
 SQLAlchemy==2.0.43
-psycopg2==2.9.9
+psycopg2-binary==2.9.9
 
 # Authentication
 PyJWT==2.10.1
