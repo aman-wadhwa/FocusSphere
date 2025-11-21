@@ -1071,16 +1071,13 @@ def check_connection_status(current_user):
     print(f"   Socket ID from active_users: {socket_id}")
     
     # Check if socket is still valid
+    # Note: get_rooms() can only be called from socket handlers, not HTTP endpoints
+    # So we'll just check if socket_id exists in active_users
     socket_valid = False
     if socket_id:
-        try:
-            from flask_socketio import rooms as get_rooms
-            rooms = get_rooms(socket_id)
-            socket_valid = len(rooms) > 0
-            print(f"   Socket {socket_id} is valid: {socket_valid}, rooms: {rooms}")
-        except Exception as e:
-            print(f"⚠ Error checking socket validity: {e}")
-            socket_valid = False
+        # Verify the socket_id is still in active_users (simple check)
+        socket_valid = socket_id in active_users.values()
+        print(f"   Socket {socket_id} validity check: {socket_valid} (in active_users.values())")
     
     # Debug information
     debug_info = {
@@ -1092,23 +1089,26 @@ def check_connection_status(current_user):
     }
     
     # Try to find user via room if not in active_users
+    # Note: We can't use get_rooms() from HTTP endpoints, so we'll skip this check
+    # The registration should happen via socket events, not HTTP
     if not is_online:
-        user_room = f"user_{current_user.id}"
-        from flask_socketio import rooms as get_rooms
-        # Check all active sockets
-        for sid in set(active_users.values()):
-            try:
-                rooms = get_rooms(sid)
-                if user_room in rooms:
-                    # Found via room!
-                    socket_id = sid
-                    active_users[user_id_str] = sid
-                    is_online = True
-                    socket_valid = True
-                    print(f"✅ Found user {current_user.id} via room check and updated active_users")
-                    break
-            except:
-                continue
+        print(f"⚠ User {current_user.id} not found in active_users")
+        print(f"   This might indicate:")
+        print(f"   1. Registration event not received yet")
+        print(f"   2. Registration happening on different worker (multi-worker issue)")
+        print(f"   3. Socket connection not established")
+        print(f"   💡 For multi-worker deployments, consider using Redis for shared state")
+    
+    # IMPORTANT: If active_users is empty, this is likely a multi-worker issue
+    # Each worker has its own active_users dictionary
+    # For production, consider using Redis for shared state
+    if len(active_users) == 0:
+        print(f"⚠⚠⚠ WARNING: active_users is EMPTY!")
+        print(f"   This suggests:")
+        print(f"   1. No registrations have occurred on this worker")
+        print(f"   2. Render is using multiple workers (each has separate memory)")
+        print(f"   3. Registration events are going to a different worker")
+        print(f"   💡 Solution: Use Redis or disable multiple workers in Render")
     
     return jsonify({
         "is_online": is_online,
@@ -1117,7 +1117,8 @@ def check_connection_status(current_user):
         "user_id": current_user.id,
         "status": current_user.status,
         "message": "Socket connection is registered and active" if (is_online and socket_valid) else "Socket connection is not registered or invalid. Please refresh the page or reconnect.",
-        "debug": debug_info
+        "debug": debug_info,
+        "warning": "active_users is empty - this may indicate a multi-worker issue on Render" if len(active_users) == 0 else None
     })
 
 @app.route('/api/users/me/preferences', methods=['PUT'])
@@ -2364,6 +2365,8 @@ def handle_connect():
     print(f"✅ Client connected: {request.sid}")
     print(f"   Origin: {request.environ.get('HTTP_ORIGIN', 'unknown')}")
     print(f"   Remote address: {request.environ.get('REMOTE_ADDR', 'unknown')}")
+    print(f"   Active users count BEFORE registration: {len(active_users)}")
+    print(f"   Waiting for register_connection event...")
 
 @socketio.on('register_connection')
 def handle_register_connection(data):
