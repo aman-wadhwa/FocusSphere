@@ -1171,13 +1171,41 @@ def find_match(current_user):
             except:
                 continue
         
+        # If still not found, wait a bit and try once more (for slow connections)
+        if not user_sid:
+            print(f"⚠ User {current_user.id} not found in active_users or user room, waiting 2 seconds and retrying...")
+            import time
+            time.sleep(2)  # Wait 2 seconds for registration to complete
+            
+            # Try again
+            user_sid = active_users.get(current_user_id_str)
+            if not user_sid:
+                user_room = f"user_{current_user.id}"
+                from flask_socketio import rooms as get_rooms
+                for sid in set(active_users.values()):
+                    try:
+                        rooms = get_rooms(sid)
+                        if user_room in rooms:
+                            user_sid = sid
+                            active_users[current_user_id_str] = sid
+                            print(f"✓ Found user {current_user.id} socket {sid} via room check after wait")
+                            break
+                    except:
+                        continue
+        
         # If still not found, return error but with helpful message
         if not user_sid:
-            print(f"✗ User {current_user.id} not found in active_users or user room")
-            print(f"Active users: {active_users}")
+            print(f"✗ User {current_user.id} not found in active_users or user room after retry")
+            print(f"Active users count: {len(active_users)}")
+            print(f"Active user IDs (first 10): {list(active_users.keys())[:10]}")
             return jsonify({
                 "error": "You must be connected to search for matches. Please refresh the page or wait a moment for your connection to register.",
-                "hint": "Your socket connection may still be registering. Try waiting a few seconds and clicking 'Find a Match' again, or refresh the page."
+                "hint": "Your socket connection may still be registering. Try waiting a few seconds and clicking 'Find a Match' again, or refresh the page.",
+                "debug": {
+                    "active_users_count": len(active_users),
+                    "user_id": current_user.id,
+                    "user_status": current_user.status
+                }
             }), 400
     
     # Get all searching candidates
@@ -2330,16 +2358,23 @@ def handle_connect():
 
 @socketio.on('register_connection')
 def handle_register_connection(data):
+    print(f"📥 Received register_connection event from socket {request.sid}")
+    print(f"   Data keys: {list(data.keys()) if data else 'None'}")
+    
     token = data.get('token')
     if not token:
-        print("No token provided, connection not registered")
+        print("❌ No token provided, connection not registered")
         socketio.emit('registration_failed', {'error': 'No token provided'}, room=request.sid)
         return
+    
+    print(f"   Token received (length: {len(token) if token else 0})")
     try:
         # Decode token to get user_id
+        print(f"   Attempting to decode token...")
         token_data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
         user_id = token_data['sub']
         user_id_str = str(user_id)
+        print(f"   ✅ Token decoded successfully, user_id: {user_id}")
         
         # Clean up any old socket connections for this user (if they reconnected)
         old_sid = active_users.get(user_id_str)

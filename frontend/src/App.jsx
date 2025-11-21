@@ -196,7 +196,7 @@ function App() {
         console.log(`   Token present: ${!!token}`);
         
         // Wait for confirmation with longer timeout
-        const registered = await new Promise((resolve) => {
+        const registered = await new Promise(async (resolve) => {
           let resolved = false;
           
           const timeout = setTimeout(() => {
@@ -235,14 +235,31 @@ function App() {
           socket.once('registration_confirmed', handler);
           socket.once('registration_failed', failHandler);
           
-          // Emit registration
+          // Emit registration with error callback
           console.log('📤 Emitting register_connection event...');
-          socket.emit('register_connection', { token: token }, (response) => {
-            // Acknowledge callback (if server supports it)
-            if (response) {
-              console.log('📥 Registration acknowledge:', response);
+          console.log('   Token length:', token.length);
+          console.log('   Token preview:', token.substring(0, 20) + '...');
+          
+          try {
+            socket.emit('register_connection', { token: token }, (response) => {
+              // Acknowledge callback (if server supports it)
+              if (response) {
+                console.log('📥 Registration acknowledge:', response);
+              }
+            });
+            
+            // Small delay to ensure event is sent before waiting for response
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (emitError) {
+            console.error('❌ Error emitting registration:', emitError);
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              socket.off('registration_confirmed', handler);
+              socket.off('registration_failed', failHandler);
+              resolve(false);
             }
-          });
+          }
         });
         
         if (registered) {
@@ -1134,20 +1151,49 @@ function App() {
         minimum_similarity_threshold: similarityThreshold
       });
       
-      // Ensure socket is connected first
+      // Ensure socket is connected first - with more robust connection handling
       if (!socket.connected) {
         setMessage('Connecting to server...');
-        socket.connect();
-        // Wait for connection
-        await new Promise((resolve) => {
+        console.log('📡 Socket not connected, attempting to connect...');
+        console.log('   API_URL:', API_URL);
+        
+        // Disconnect and reconnect to ensure fresh connection
+        if (socket.disconnected) {
+          socket.connect();
+        }
+        
+        // Wait for connection with longer timeout
+        const connected = await new Promise((resolve) => {
           if (socket.connected) {
-            resolve();
-          } else {
-            socket.once('connect', resolve);
-            setTimeout(resolve, 3000); // Timeout after 3 seconds
+            console.log('✅ Socket already connected');
+            resolve(true);
+            return;
           }
+          
+          const timeout = setTimeout(() => {
+            console.error('⏱ Socket connection timeout after 10 seconds');
+            resolve(false);
+          }, 10000);
+          
+          const connectHandler = () => {
+            clearTimeout(timeout);
+            socket.off('connect', connectHandler);
+            console.log('✅ Socket connected successfully');
+            resolve(true);
+          };
+          
+          socket.once('connect', connectHandler);
         });
+        
+        if (!connected) {
+          setMessage('❌ Could not connect to server. Please check your internet connection and try again.');
+          console.error('❌ Failed to establish socket connection');
+          return;
+        }
       }
+      
+      // Wait a bit for socket to stabilize
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       // Ensure socket is registered when setting status to searching
       setMessage('Registering connection...');
@@ -1156,8 +1202,11 @@ function App() {
       console.log('   Socket ID:', socket.id);
       console.log('   API_URL:', API_URL);
       console.log('   Is registered:', isSocketRegistered);
+      console.log('   Token present:', !!localStorage.getItem('token'));
       
-      const registered = await registerSocketWithRetry(15, 1000); // More retries, longer delay
+      // Force re-registration even if already registered (to ensure it's current)
+      setIsSocketRegistered(false);
+      const registered = await registerSocketWithRetry(20, 1500); // Even more retries, longer delay
       
       // Re-register invite_received listener to ensure it's active
       if (socket.connected) {
