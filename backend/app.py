@@ -1060,8 +1060,15 @@ def update_status(current_user):
 def check_connection_status(current_user):
     """Check if user's socket connection is registered"""
     user_id_str = str(current_user.id)
+    print(f"🔍 Connection status check for user {current_user.id} (str: {user_id_str})")
+    print(f"   Active users count: {len(active_users)}")
+    print(f"   Active user IDs (first 10): {list(active_users.keys())[:10]}")
+    
     is_online = user_id_str in active_users
     socket_id = active_users.get(user_id_str) if is_online else None
+    
+    print(f"   User in active_users: {is_online}")
+    print(f"   Socket ID from active_users: {socket_id}")
     
     # Check if socket is still valid
     socket_valid = False
@@ -1070,6 +1077,7 @@ def check_connection_status(current_user):
             from flask_socketio import rooms as get_rooms
             rooms = get_rooms(socket_id)
             socket_valid = len(rooms) > 0
+            print(f"   Socket {socket_id} is valid: {socket_valid}, rooms: {rooms}")
         except Exception as e:
             print(f"⚠ Error checking socket validity: {e}")
             socket_valid = False
@@ -1079,7 +1087,8 @@ def check_connection_status(current_user):
         "active_users_count": len(active_users),
         "active_user_ids": list(active_users.keys())[:10],  # First 10 for debugging
         "user_room": f"user_{current_user.id}",
-        "socket_id": socket_id
+        "socket_id": socket_id,
+        "checked_user_id_str": user_id_str
     }
     
     # Try to find user via room if not in active_users
@@ -2397,8 +2406,17 @@ def handle_register_connection(data):
         
         # Map the user_id to their current socket ID
         active_users[user_id_str] = request.sid
-        print(f"✓ Registered user {user_id} to sid {request.sid}")
-        print(f"Active users count: {len(active_users)}")
+        print(f"✅ Registered user {user_id} to sid {request.sid}")
+        print(f"   Active users count: {len(active_users)}")
+        print(f"   Active users keys: {list(active_users.keys())[:10]}")
+        
+        # Verify it was stored correctly
+        if user_id_str in active_users and active_users[user_id_str] == request.sid:
+            print(f"✅ Verified: User {user_id} is now in active_users")
+        else:
+            print(f"❌ ERROR: User {user_id} was NOT stored in active_users correctly!")
+            print(f"   Expected: {user_id_str} -> {request.sid}")
+            print(f"   Actual: {active_users.get(user_id_str, 'NOT FOUND')}")
         
         # Also join a user-specific room for fallback message delivery
         room_id = f"user_{user_id}"
@@ -2427,22 +2445,37 @@ def handle_register_connection(data):
             import traceback
             traceback.print_exc()
         
+        # Double-check active_users before sending confirmation
+        if user_id_str not in active_users:
+            print(f"❌ CRITICAL: User {user_id} not in active_users before confirmation! Re-adding...")
+            active_users[user_id_str] = request.sid
+        
         # Send confirmation back to client
         confirmation_data = {
             'user_id': user_id,
             'status': 'registered',
             'socket_id': request.sid,
-            'timestamp': datetime.now().isoformat()
+            'timestamp': datetime.now().isoformat(),
+            'active_users_count': len(active_users)  # Include for debugging
         }
+        
+        # Emit confirmation multiple ways to ensure delivery
         socketio.emit('registration_confirmed', confirmation_data, room=request.sid)
+        socketio.emit('registration_confirmed', confirmation_data, to=request.sid)  # Also send directly
+        
         print(f"✅ Registration confirmation sent to user {user_id} (sid: {request.sid})")
         print(f"   Confirmation data: {confirmation_data}")
+        print(f"   Final active_users check: {user_id_str in active_users}")
+        print(f"   Final active_users value: {active_users.get(user_id_str, 'NOT FOUND')}")
         
         # Also verify the user is now in active_users
-        if user_id_str in active_users:
+        if user_id_str in active_users and active_users[user_id_str] == request.sid:
             print(f"✅ Verified: User {user_id} is now in active_users with sid {active_users[user_id_str]}")
         else:
-            print(f"⚠ WARNING: User {user_id} not found in active_users after registration!")
+            print(f"❌ CRITICAL ERROR: User {user_id} not found in active_users after registration!")
+            print(f"   Expected: {user_id_str} -> {request.sid}")
+            print(f"   Found: {active_users.get(user_id_str, 'NOT FOUND')}")
+            print(f"   All active_users: {dict(active_users)}")
         
     except jwt.ExpiredSignatureError:
         error_msg = "Token has expired. Please log in again."

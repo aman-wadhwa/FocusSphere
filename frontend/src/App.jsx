@@ -1219,17 +1219,41 @@ function App() {
         setMessage('Status set to "searching" and connection registered! ✓');
         console.log('✓ Socket registration confirmed');
         
-        // Verify connection status with backend
-        try {
-          const statusResponse = await apiClient.get('/api/users/me/connection-status');
-          if (statusResponse.data.is_online && statusResponse.data.socket_valid) {
-            console.log('✓ Connection status verified:', statusResponse.data);
-          } else {
-            console.warn('⚠ Connection status check failed:', statusResponse.data);
-            setMessage('⚠ Status set to "searching", but connection may not be fully active. Please refresh the page if invites don\'t work.');
+        // Wait a bit for backend to fully process registration
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Verify connection status with backend - with retries
+        let statusVerified = false;
+        for (let retry = 0; retry < 3; retry++) {
+          try {
+            if (retry > 0) {
+              console.log(`🔄 Retrying connection status check (attempt ${retry + 1}/3)...`);
+              await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+            
+            const statusResponse = await apiClient.get('/api/users/me/connection-status');
+            console.log(`📊 Connection status check (attempt ${retry + 1}):`, statusResponse.data);
+            
+            if (statusResponse.data.is_online && statusResponse.data.socket_valid) {
+              console.log('✅ Connection status verified:', statusResponse.data);
+              statusVerified = true;
+              break;
+            } else {
+              console.warn(`⚠ Connection status check failed (attempt ${retry + 1}):`, statusResponse.data);
+              
+              // If we have debug info, log it
+              if (statusResponse.data.debug) {
+                console.log('   Debug info:', statusResponse.data.debug);
+              }
+            }
+          } catch (statusError) {
+            console.warn(`⚠ Could not verify connection status (attempt ${retry + 1}):`, statusError);
           }
-        } catch (statusError) {
-          console.warn('⚠ Could not verify connection status:', statusError);
+        }
+        
+        if (!statusVerified) {
+          console.warn('⚠ Connection status could not be verified after retries, but registration was successful');
+          setMessage('⚠ Status set to "searching". Connection registered but verification failed. If invites don\'t work, try refreshing the page.');
         }
       } else {
         setMessage('⚠ Status set to "searching", but connection registration failed. Please refresh the page and try again.');
