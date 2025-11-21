@@ -1633,21 +1633,22 @@ function App() {
         <div style={{ 
           padding: '0.75rem', 
           marginBottom: '1rem', 
-          borderRadius: '4px',
-          backgroundColor: isSocketRegistered && socket.connected ? '#d4edda' : '#fff3cd',
-          border: `1px solid ${isSocketRegistered && socket.connected ? '#28a745' : '#ffc107'}`,
+          borderRadius: '8px',
+          backgroundColor: isSocketRegistered && socket.connected ? 'rgba(81, 207, 102, 0.1)' : 'rgba(255, 169, 77, 0.1)',
+          border: `1px solid ${isSocketRegistered && socket.connected ? '#51cf66' : '#ffa94d'}`,
           fontSize: '0.9rem',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: '1rem'
+          gap: '1rem',
+          color: isSocketRegistered && socket.connected ? '#51cf66' : '#ffa94d'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span style={{ 
               width: '10px', 
               height: '10px', 
               borderRadius: '50%', 
-              backgroundColor: isSocketRegistered && socket.connected ? '#28a745' : '#ffc107'
+              backgroundColor: isSocketRegistered && socket.connected ? '#51cf66' : '#ffa94d'
             }}></span>
             <span>
               {socket.connected 
@@ -1655,7 +1656,7 @@ function App() {
                 : 'Disconnected'}
             </span>
             {socket.id && (
-              <span style={{ fontSize: '0.8rem', color: '#666', fontFamily: 'monospace' }}>
+              <span style={{ fontSize: '0.8rem', color: '#808080', fontFamily: 'monospace' }}>
                 (ID: {socket.id.substring(0, 8)}...)
               </span>
             )}
@@ -1697,11 +1698,12 @@ function App() {
               style={{
                 padding: '0.25rem 0.75rem',
                 fontSize: '0.85rem',
-                backgroundColor: '#007bff',
-                color: 'white',
+                backgroundColor: '#4a9eff',
+                color: '#ffffff',
                 border: 'none',
-                borderRadius: '4px',
-                cursor: 'pointer'
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: '500'
               }}
             >
               Reconnect
@@ -1768,7 +1770,7 @@ function App() {
           }}>
             {outgoingInviteTimer}s remaining
           </div>
-          <p style={{ fontSize: '0.9rem', color: '#666', fontStyle: 'italic' }}>
+          <p style={{ fontSize: '0.9rem', color: '#808080', fontStyle: 'italic' }}>
             You cannot send another invite until this one is responded to or expires.
           </p>
         </div>
@@ -1787,44 +1789,43 @@ function App() {
             <div style={{
               marginBottom: '1.5rem',
               padding: '1rem',
-              background: 'rgba(255, 255, 255, 0.8)',
-              backdropFilter: 'blur(10px)',
-              borderRadius: 'var(--radius-lg)',
-              border: '2px solid var(--border-color)'
+              background: '#252525',
+              borderRadius: '12px',
+              border: '1px solid #333333'
             }}>
               {sessionPartner.are_friends ? (
                 <div>
-                  <h3 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#667eea' }}>
+                  <h3 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#e0e0e0' }}>
                     👥 Study Partner
                   </h3>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <div style={{ fontWeight: '600', fontSize: '1.1rem' }}>{sessionPartner.partner.name}</div>
                     {sessionPartner.partner.email && (
-                      <div style={{ fontSize: '0.9rem', color: '#666' }}>📧 {sessionPartner.partner.email}</div>
+                      <div style={{ fontSize: '0.9rem', color: '#b0b0b0' }}>📧 {sessionPartner.partner.email}</div>
                     )}
                     {sessionPartner.partner.university && (
-                      <div style={{ fontSize: '0.9rem', color: '#666' }}>🎓 {sessionPartner.partner.university}</div>
+                      <div style={{ fontSize: '0.9rem', color: '#b0b0b0' }}>🎓 {sessionPartner.partner.university}</div>
                     )}
                     {sessionPartner.partner.location && (
-                      <div style={{ fontSize: '0.9rem', color: '#666' }}>📍 {sessionPartner.partner.location}</div>
+                      <div style={{ fontSize: '0.9rem', color: '#b0b0b0' }}>📍 {sessionPartner.partner.location}</div>
                     )}
-                    <div style={{ fontSize: '0.85rem', color: sessionPartner.partner_online ? '#28a745' : '#999', marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.85rem', color: sessionPartner.partner_online ? '#51cf66' : '#808080', marginTop: '0.25rem' }}>
                       {sessionPartner.partner_online ? '🟢 Online' : '⚫ Offline'}
                     </div>
                   </div>
                 </div>
               ) : (
                 <div>
-                  <h3 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#667eea' }}>
+                  <h3 style={{ marginTop: 0, marginBottom: '0.75rem', color: '#e0e0e0' }}>
                     👥 Study Partner: {sessionPartner.partner.name}
                   </h3>
                   {sessionPartner.friend_request_status === 'sent' ? (
-                    <div style={{ padding: '0.75rem', background: 'rgba(102, 126, 234, 0.1)', borderRadius: '8px', color: '#667eea' }}>
+                    <div style={{ padding: '0.75rem', background: 'rgba(74, 158, 255, 0.1)', borderRadius: '8px', color: '#4a9eff' }}>
                       ✓ Friend request sent! Waiting for acceptance...
                     </div>
                   ) : sessionPartner.friend_request_status === 'received' ? (
                     <div>
-                      <p style={{ marginBottom: '0.75rem', color: '#666' }}>
+                      <p style={{ marginBottom: '0.75rem', color: '#b0b0b0' }}>
                         {sessionPartner.partner.name} sent you a friend request!
                       </p>
                       <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -1846,7 +1847,7 @@ function App() {
                     </div>
                   ) : (
                     <div>
-                      <p style={{ marginBottom: '0.75rem', color: '#666' }}>
+                      <p style={{ marginBottom: '0.75rem', color: '#b0b0b0' }}>
                         Send a friend request to see their profile details and get trust bonuses!
                       </p>
                       <button
@@ -1871,7 +1872,7 @@ function App() {
               border: '2px solid var(--border-color)',
               textAlign: 'center'
             }}>
-              <p style={{ color: '#666', marginBottom: '0.5rem' }}>Loading partner information...</p>
+              <p style={{ color: '#b0b0b0', marginBottom: '0.5rem' }}>Loading partner information...</p>
               <button 
                 onClick={() => fetchSessionPartner(sessionRoom)}
                 className="update-btn"
@@ -1892,12 +1893,11 @@ function App() {
           <div style={{ 
             marginBottom: '1.5rem', 
             padding: '1.5rem', 
-            background: 'rgba(255, 255, 255, 0.8)',
-            backdropFilter: 'blur(10px)',
-            borderRadius: 'var(--radius-lg)',
-            border: '2px solid var(--border-color)'
+            background: '#252525',
+            borderRadius: '12px',
+            border: '1px solid #333333'
           }}>
-            <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#667eea' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', color: '#e0e0e0' }}>
               📹 Video Call
             </h3>
             
@@ -1906,7 +1906,7 @@ function App() {
                 <p style={{ marginBottom: '1rem', fontWeight: 600 }}>
                   Google Meet Ready!
                 </p>
-                <p style={{ marginBottom: '1rem', color: '#666' }}>
+                <p style={{ marginBottom: '1rem', color: '#b0b0b0' }}>
                   Both users have accepted. Click below to go to Google Meet.
                 </p>
                 <a 
@@ -1916,17 +1916,17 @@ function App() {
                   style={{
                     display: 'inline-block',
                     padding: '1rem 2rem',
-                    background: 'var(--primary-gradient)',
-                    color: 'white',
+                    background: '#4a9eff',
+                    color: '#ffffff',
                     textDecoration: 'none',
-                    borderRadius: 'var(--radius-md)',
+                    borderRadius: '8px',
                     fontWeight: 600,
                     fontSize: '1.1rem',
-                    boxShadow: 'var(--shadow-md)',
-                    transition: 'var(--transition)'
+                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.4)',
+                    transition: 'all 0.2s ease'
                   }}
-                  onMouseEnter={(e) => e.target.style.transform = 'translateY(-2px)'}
-                  onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+                  onMouseEnter={(e) => { e.target.style.background = '#5ba8ff'; e.target.style.transform = 'translateY(-2px)'; }}
+                  onMouseLeave={(e) => { e.target.style.background = '#4a9eff'; e.target.style.transform = 'translateY(0)'; }}
                 >
                   Go to Google Meet
                 </a>
@@ -1952,7 +1952,7 @@ function App() {
                     </button>
                   </div>
                 ) : (
-                  <p style={{ color: '#667eea', fontWeight: 600 }}>
+                  <p style={{ color: '#4a9eff', fontWeight: 600 }}>
                     Waiting for other user to accept...
                   </p>
                 )}
@@ -1963,18 +1963,18 @@ function App() {
                 style={{
                   width: '100%',
                   padding: '1rem',
-                  background: 'var(--primary-gradient)',
-                  color: 'white',
+                  background: '#4a9eff',
+                  color: '#ffffff',
                   border: 'none',
-                  borderRadius: 'var(--radius-md)',
+                  borderRadius: '8px',
                   fontSize: '1rem',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  boxShadow: 'var(--shadow-md)',
-                  transition: 'var(--transition)'
+                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.4)',
+                  transition: 'all 0.2s ease'
                 }}
-                onMouseEnter={(e) => e.target.style.transform = 'translateY(-2px)'}
-                onMouseLeave={(e) => e.target.style.transform = 'translateY(0)'}
+                onMouseEnter={(e) => { e.target.style.background = '#5ba8ff'; e.target.style.transform = 'translateY(-2px)'; }}
+                onMouseLeave={(e) => { e.target.style.background = '#4a9eff'; e.target.style.transform = 'translateY(0)'; }}
               >
                 Request Google Meet
               </button>
