@@ -24,7 +24,37 @@ apiClient.interceptors.request.use((config) => {
 
 // --- Socket Connection (global ref) ---
 // We use a ref so the socket isn't recreated on every render
-const socket = io(API_URL);
+// Configure socket with better error handling and reconnection
+const socket = io(API_URL, {
+  transports: ['websocket', 'polling'],
+  reconnection: true,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 5000,
+  reconnectionAttempts: 5,
+  timeout: 20000,
+  forceNew: false
+});
+
+// Add connection error logging
+socket.on('connect_error', (error) => {
+  console.error('❌ Socket connection error:', error);
+  console.error('   API_URL:', API_URL);
+  console.error('   Error message:', error.message);
+});
+
+socket.on('connect', () => {
+  console.log('✅ Socket connected successfully');
+  console.log('   Socket ID:', socket.id);
+  console.log('   API_URL:', API_URL);
+});
+
+socket.on('disconnect', (reason) => {
+  console.warn('⚠ Socket disconnected:', reason);
+});
+
+socket.on('error', (error) => {
+  console.error('❌ Socket error:', error);
+});
 
 function App() {
   // Form states
@@ -116,55 +146,124 @@ function App() {
   }, []);
 
   // Helper function to register socket with retry (defined early so it can be used in useEffect)
-  const registerSocketWithRetry = async (maxRetries = 5, delay = 500) => {
+  const registerSocketWithRetry = async (maxRetries = 10, delay = 1000) => {
     const token = localStorage.getItem('token');
-    if (!token) return false;
+    if (!token) {
+      console.error('❌ No token found for socket registration');
+      return false;
+    }
     
+    console.log(`🔄 Starting socket registration (max ${maxRetries} attempts, ${delay}ms delay)`);
+    console.log(`   Socket connected: ${socket.connected}`);
+    console.log(`   Socket ID: ${socket.id || 'none'}`);
+    console.log(`   API_URL: ${API_URL}`);
+    
+    // First, ensure socket is connected
+    if (!socket.connected) {
+      console.log('⏳ Socket not connected, attempting to connect...');
+      socket.connect();
+      
+      // Wait for connection with longer timeout
+      const connected = await new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn('⏱ Socket connection timeout');
+          resolve(false);
+        }, 5000);
+        
+        if (socket.connected) {
+          clearTimeout(timeout);
+          resolve(true);
+        } else {
+          socket.once('connect', () => {
+            clearTimeout(timeout);
+            console.log('✅ Socket connected during registration');
+            resolve(true);
+          });
+        }
+      });
+      
+      if (!connected) {
+        console.error('❌ Failed to establish socket connection');
+        return false;
+      }
+    }
+    
+    // Now try to register
     for (let i = 0; i < maxRetries; i++) {
       if (socket.connected) {
-        console.log(`Registering socket (attempt ${i + 1}/${maxRetries})...`);
+        console.log(`📤 Registering socket (attempt ${i + 1}/${maxRetries})...`);
+        console.log(`   Socket ID: ${socket.id}`);
+        console.log(`   Token present: ${!!token}`);
         
-        // Wait for confirmation
+        // Wait for confirmation with longer timeout
         const registered = await new Promise((resolve) => {
+          let resolved = false;
+          
           const timeout = setTimeout(() => {
-            socket.off('registration_confirmed', handler);
-            socket.off('registration_failed', failHandler);
-            resolve(false);
-          }, delay);
+            if (!resolved) {
+              resolved = true;
+              socket.off('registration_confirmed', handler);
+              socket.off('registration_failed', failHandler);
+              console.warn(`⏱ Registration timeout on attempt ${i + 1}`);
+              resolve(false);
+            }
+          }, delay * 2); // Double the delay for registration timeout
           
           const handler = (data) => {
-            clearTimeout(timeout);
-            socket.off('registration_confirmed', handler);
-            socket.off('registration_failed', failHandler);
-            setIsSocketRegistered(true);
-            resolve(true);
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              socket.off('registration_confirmed', handler);
+              socket.off('registration_failed', failHandler);
+              console.log('✅ Registration confirmed:', data);
+              setIsSocketRegistered(true);
+              resolve(true);
+            }
           };
           
-          const failHandler = () => {
-            clearTimeout(timeout);
-            socket.off('registration_confirmed', handler);
-            socket.off('registration_failed', failHandler);
-            resolve(false);
+          const failHandler = (error) => {
+            if (!resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              socket.off('registration_confirmed', handler);
+              socket.off('registration_failed', failHandler);
+              console.error('❌ Registration failed:', error);
+              resolve(false);
+            }
           };
           
           socket.once('registration_confirmed', handler);
           socket.once('registration_failed', failHandler);
           
           // Emit registration
-          socket.emit('register_connection', { token: token });
+          console.log('📤 Emitting register_connection event...');
+          socket.emit('register_connection', { token: token }, (response) => {
+            // Acknowledge callback (if server supports it)
+            if (response) {
+              console.log('📥 Registration acknowledge:', response);
+            }
+          });
         });
         
         if (registered) {
+          console.log('✅ Socket registration successful!');
           return true;
+        } else {
+          console.warn(`⚠ Registration attempt ${i + 1} failed, retrying...`);
+          // Wait before next attempt
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
       } else {
-        // Wait for connection
+        console.warn('⚠ Socket disconnected during registration, reconnecting...');
+        socket.connect();
         await new Promise(resolve => {
           socket.once('connect', () => resolve());
           setTimeout(() => resolve(), delay);
         });
       }
     }
+    
+    console.error('❌ Socket registration failed after all retries');
     return false;
   };
 
@@ -354,7 +453,10 @@ function App() {
     });
 
     socket.on('registration_confirmed', (data) => {
-      console.log('✓ Socket registration confirmed:', data);
+      console.log('✅ Socket registration confirmed:', data);
+      console.log('   User ID:', data.user_id);
+      console.log('   Socket ID:', data.socket_id);
+      console.log('   Status:', data.status);
       setIsSocketRegistered(true);
       
       // Ensure listeners are active after registration
@@ -388,7 +490,10 @@ function App() {
     });
     
     socket.on('registration_failed', (data) => {
-      console.error('✗ Socket registration failed:', data);
+      console.error('❌ Socket registration failed:', data);
+      console.error('   Error:', data.error || data);
+      console.error('   Socket ID:', socket.id);
+      console.error('   Socket connected:', socket.connected);
       setIsSocketRegistered(false);
     });
     
@@ -1046,7 +1151,13 @@ function App() {
       
       // Ensure socket is registered when setting status to searching
       setMessage('Registering connection...');
-      const registered = await registerSocketWithRetry(10, 500); // More retries, longer delay
+      console.log('🔍 Pre-registration check:');
+      console.log('   Socket connected:', socket.connected);
+      console.log('   Socket ID:', socket.id);
+      console.log('   API_URL:', API_URL);
+      console.log('   Is registered:', isSocketRegistered);
+      
+      const registered = await registerSocketWithRetry(15, 1000); // More retries, longer delay
       
       // Re-register invite_received listener to ensure it's active
       if (socket.connected) {
@@ -1447,7 +1558,7 @@ function App() {
       {/* Socket Connection Status Indicator */}
       {isLoggedIn && (
         <div style={{ 
-          padding: '0.5rem', 
+          padding: '0.75rem', 
           marginBottom: '1rem', 
           borderRadius: '4px',
           backgroundColor: isSocketRegistered && socket.connected ? '#d4edda' : '#fff3cd',
@@ -1455,19 +1566,74 @@ function App() {
           fontSize: '0.9rem',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.5rem'
+          justifyContent: 'space-between',
+          gap: '1rem'
         }}>
-          <span style={{ 
-            width: '10px', 
-            height: '10px', 
-            borderRadius: '50%', 
-            backgroundColor: isSocketRegistered && socket.connected ? '#28a745' : '#ffc107'
-          }}></span>
-          <span>
-            {socket.connected 
-              ? (isSocketRegistered ? 'Connected & Registered' : 'Connected, registering...')
-              : 'Disconnected'}
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ 
+              width: '10px', 
+              height: '10px', 
+              borderRadius: '50%', 
+              backgroundColor: isSocketRegistered && socket.connected ? '#28a745' : '#ffc107'
+            }}></span>
+            <span>
+              {socket.connected 
+                ? (isSocketRegistered ? 'Connected & Registered' : 'Connected, registering...')
+                : 'Disconnected'}
+            </span>
+            {socket.id && (
+              <span style={{ fontSize: '0.8rem', color: '#666', fontFamily: 'monospace' }}>
+                (ID: {socket.id.substring(0, 8)}...)
+              </span>
+            )}
+          </div>
+          {(!socket.connected || !isSocketRegistered) && (
+            <button
+              onClick={async () => {
+                console.log('🔄 Manual reconnect requested');
+                setMessage('Reconnecting...');
+                setIsSocketRegistered(false);
+                
+                if (!socket.connected) {
+                  console.log('📡 Connecting socket...');
+                  socket.connect();
+                  await new Promise(resolve => {
+                    if (socket.connected) {
+                      resolve();
+                    } else {
+                      socket.once('connect', resolve);
+                      setTimeout(() => resolve(), 5000);
+                    }
+                  });
+                }
+                
+                if (socket.connected) {
+                  console.log('📤 Registering socket...');
+                  const registered = await registerSocketWithRetry(15, 1000);
+                  if (registered) {
+                    setMessage('✅ Reconnected and registered successfully!');
+                    console.log('✅ Manual reconnect successful');
+                  } else {
+                    setMessage('❌ Reconnection failed. Please refresh the page.');
+                    console.error('❌ Manual reconnect failed');
+                  }
+                } else {
+                  setMessage('❌ Could not connect to server. Please check your internet connection.');
+                }
+              }}
+              style={{
+                padding: '0.25rem 0.75rem',
+                fontSize: '0.85rem',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer'
+              }}
+            >
+              Reconnect
+            </button>
+          )}
         </div>
       )}
 

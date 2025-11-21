@@ -1070,8 +1070,36 @@ def check_connection_status(current_user):
             from flask_socketio import rooms as get_rooms
             rooms = get_rooms(socket_id)
             socket_valid = len(rooms) > 0
-        except:
+        except Exception as e:
+            print(f"⚠ Error checking socket validity: {e}")
             socket_valid = False
+    
+    # Debug information
+    debug_info = {
+        "active_users_count": len(active_users),
+        "active_user_ids": list(active_users.keys())[:10],  # First 10 for debugging
+        "user_room": f"user_{current_user.id}",
+        "socket_id": socket_id
+    }
+    
+    # Try to find user via room if not in active_users
+    if not is_online:
+        user_room = f"user_{current_user.id}"
+        from flask_socketio import rooms as get_rooms
+        # Check all active sockets
+        for sid in set(active_users.values()):
+            try:
+                rooms = get_rooms(sid)
+                if user_room in rooms:
+                    # Found via room!
+                    socket_id = sid
+                    active_users[user_id_str] = sid
+                    is_online = True
+                    socket_valid = True
+                    print(f"✅ Found user {current_user.id} via room check and updated active_users")
+                    break
+            except:
+                continue
     
     return jsonify({
         "is_online": is_online,
@@ -1079,7 +1107,8 @@ def check_connection_status(current_user):
         "socket_valid": socket_valid,
         "user_id": current_user.id,
         "status": current_user.status,
-        "message": "Socket connection is registered and active" if (is_online and socket_valid) else "Socket connection is not registered or invalid. Please refresh the page or reconnect."
+        "message": "Socket connection is registered and active" if (is_online and socket_valid) else "Socket connection is not registered or invalid. Please refresh the page or reconnect.",
+        "debug": debug_info
     })
 
 @app.route('/api/users/me/preferences', methods=['PUT'])
@@ -2295,7 +2324,9 @@ def handle_pomodoro_completed(data):
 
 @socketio.on('connect')
 def handle_connect():
-    print(f"Client connected: {request.sid}")
+    print(f"✅ Client connected: {request.sid}")
+    print(f"   Origin: {request.environ.get('HTTP_ORIGIN', 'unknown')}")
+    print(f"   Remote address: {request.environ.get('REMOTE_ADDR', 'unknown')}")
 
 @socketio.on('register_connection')
 def handle_register_connection(data):
@@ -2362,12 +2393,21 @@ def handle_register_connection(data):
             traceback.print_exc()
         
         # Send confirmation back to client
-        socketio.emit('registration_confirmed', {
+        confirmation_data = {
             'user_id': user_id,
             'status': 'registered',
-            'socket_id': request.sid
-        }, room=request.sid)
-        print(f"✓ Registration confirmation sent to user {user_id}")
+            'socket_id': request.sid,
+            'timestamp': datetime.now().isoformat()
+        }
+        socketio.emit('registration_confirmed', confirmation_data, room=request.sid)
+        print(f"✅ Registration confirmation sent to user {user_id} (sid: {request.sid})")
+        print(f"   Confirmation data: {confirmation_data}")
+        
+        # Also verify the user is now in active_users
+        if user_id_str in active_users:
+            print(f"✅ Verified: User {user_id} is now in active_users with sid {active_users[user_id_str]}")
+        else:
+            print(f"⚠ WARNING: User {user_id} not found in active_users after registration!")
         
     except jwt.ExpiredSignatureError:
         error_msg = "Token has expired. Please log in again."
